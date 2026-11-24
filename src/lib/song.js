@@ -50,14 +50,16 @@ async function load(edition, book, onStatus) {
 		lexemeKeys(f, book.code)]);
 	const ctx = prepareBook({ cfg, edition: ed, book: book.code, bt, al, bookPlan, vmap, lexemes });
 	const chapters = [...new Set([...bt.verses.keys()].map((k) => Math.floor(k / 1000)))].sort((a, b) => a - b);
-	return { ctx, chapters, alignment: { kind: al.kind, off: [...al.chaptersOff] } };
+	return { ctx, chapters, planChapters: new Set(bookPlan.chapters || []), alignment: { kind: al.kind, off: [...al.chaptersOff] } };
 }
 
 const pad = (n) => String(n).padStart(3, '0');
 
 /** {lyrics, style, notes, chars} of one edition chapter */
-export async function song({ ctx }, book, chapter) {
-	const docs = (await Promise.all([chapter - 1, chapter, chapter + 1].map((c) =>
+export async function song({ ctx, planChapters }, book, chapter) {
+	// only the spine chapters the book plan lists, so chapter 1 and the last ask for no missing file
+	const near = [chapter - 1, chapter, chapter + 1].filter((c) => !planChapters.size || planChapters.has(c));
+	const docs = (await Promise.all(near.map((c) =>
 		getJson(`/data/plan/${book.code}/${book.code}_${pad(c)}.json`).catch(() => null)))).filter(Boolean);
 	return projectChapter(ctx, chapter, chapterPlan(docs));
 }
