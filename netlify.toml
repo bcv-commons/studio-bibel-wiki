@@ -5,6 +5,17 @@
 [build.environment]
   NODE_VERSION = "22"
 
+# netlify/functions/dbt.mjs: the DBT (Bible Brain) key proxy, at /api/dbt/<fileset>/<BOOK>/<chapter>.
+# Its key, DBT_API_KEY, is set in the Netlify dashboard (Site configuration > Environment variables,
+# scope Functions), never here. Locally it comes from .env (git-ignored) with netlify dev.
+[functions]
+  directory = "netlify/functions"
+
+[dev]
+  command = "npm run dev"
+  targetPort = 5173
+  port = 8888
+
 # The release data (plans, config, alignment index) is named by version, so it can be cached long.
 [[headers]]
   for = "/data/*"
