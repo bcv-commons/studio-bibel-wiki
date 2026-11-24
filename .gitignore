@@ -1,0 +1,16 @@
+node_modules/
+/.svelte-kit/
+/build/
+.netlify/
+.DS_Store
+
+# made by npm run data (scripts/prepare-data.mjs) from a bible-song-builder release
+/static/data/
+
+# local only
+CLAUDE.local.md
+internal-docs/
+notes/
+.claude/
+.env
+.env.*

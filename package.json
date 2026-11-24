@@ -1,0 +1,28 @@
+{
+  "name": "studio-bibel-wiki",
+  "version": "0.1.0",
+  "private": true,
+  "description": "studio.bibel.wiki: make songs from the Bible in your language. Lyrics, Style and notes for Suno and other music services, from any edition of the bibles catalog.",
+  "type": "module",
+  "license": "MIT",
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  },
+  "scripts": {
+    "data": "node scripts/prepare-data.mjs",
+    "dev": "npm run data && vite dev",
+    "build": "npm run data && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "^4.0.1",
+    "@sveltejs/kit": "^3.4.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.2",
+    "svelte": "^5.59.1",
+    "vite": "^8.3.8"
+  },
+  "dependencies": {
+    "bible-song-builder": "github:bcv-commons/bible-song-builder#v0.1.0",
+    "fflate": "^0.8.3"
+  }
+}
