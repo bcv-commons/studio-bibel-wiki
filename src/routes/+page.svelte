@@ -10,12 +10,14 @@
 	import Copy from '#lib/Copy.svelte';
 	import LanguagePicker from '#lib/LanguagePicker.svelte';
 	import BookPicker from '#lib/BookPicker.svelte';
+	import EditionPicker from '#lib/EditionPicker.svelte';
 
 	let langs = $state([]);
 	let imps = $state([]); // texts entered by hand (import/, local dev server only)
 	let imp = $state('');
 	let picking = $state(false); // the language dialog is open
 	let bp = $state(null); // the book/chapter panel: {tab, anchor}
+	let ep = $state(null); // the Bible panel: its anchor
 	let bookLoading = $state(false); // learning a book's chapters (CDN editions)
 	let iso = $state('');
 	let eds = $state([]);
@@ -153,7 +155,6 @@
 		else if (q.get('lang') && langs.some((l) => l.iso === q.get('lang'))) await chooseLanguage(q.get('lang'), want);
 	});
 
-	const aligned = (e) => (e.alignment ? '' : ' · no alignment');
 	const off = $derived(alignment && chapter && alignment.off.includes(chapter));
 </script>
 
@@ -195,14 +196,14 @@
 				{#if current}{current.name}{#if current.own}<span class="own">&nbsp;· {current.own}</span>{/if}{:else}Choose a language …{/if}
 			</button>
 		</div>
-		<label>Bible
-			<select value={edId} disabled={!eds.length} onchange={(e) => chooseEdition(e.currentTarget.value)}>
-				<option value="">{iso && !eds.length && !status ? 'No edition the studio can read yet' : 'Choose a Bible …'}</option>
-				{#each eds as e (e.id)}
-					<option value={e.id}>{e.name} ({e.short}){aligned(e)}</option>
-				{/each}
-			</select>
-		</label>
+		<div class="field">
+			<span id="bible-label">Bible</span>
+			<button class="lang" aria-labelledby="bible-label" aria-haspopup="dialog" disabled={!eds.length}
+				onclick={(e) => (ep = e.currentTarget.getBoundingClientRect())}>
+				{#if edition}{edition.name}{#if !edition.alignment}<span class="own">&nbsp;· no alignment</span>{/if}
+				{:else}{iso && !eds.length && !status ? 'No edition the studio can read yet' : 'Choose a Bible …'}{/if}
+			</button>
+		</div>
 		{/if}
 		<div class="field">
 			<span id="book-label">Book</span>
@@ -223,6 +224,10 @@
 
 	{#if picking}
 		<LanguagePicker {langs} current={iso} onPick={(code) => chooseLanguage(code)} onClose={() => (picking = false)} />
+	{/if}
+
+	{#if ep}
+		<EditionPicker editions={eds} current={edId} anchor={ep} onPick={(id) => chooseEdition(id)} onClose={() => (ep = null)} />
 	{/if}
 
 	{#if bp}
@@ -279,7 +284,7 @@
 	h1 span { color: #8a6d3b; font-weight: 500; }
 	a { color: #6b4f1d; }
 	.pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.75rem; margin: 1.25rem 0; }
-	label, .field { display: flex; flex-direction: column; font-size: 0.85rem; color: #555; gap: 0.25rem; }
+	.field { display: flex; flex-direction: column; font-size: 0.85rem; color: #555; gap: 0.25rem; }
 	button.lang { font: inherit; font-size: 1rem; text-align: left; padding: 0.45rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; color: #1d1d1f; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	button.lang:hover:not(:disabled) { border-color: #8a6d3b; }
 	button.lang .own { color: #777; }
@@ -287,7 +292,6 @@
 	.chapter button.lang { flex: 1; text-align: center; }
 	.step { font: inherit; font-size: 1.1rem; width: 2.2rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; color: #6b4f1d; cursor: pointer; }
 	.step:disabled { color: #ccc; cursor: default; }
-	select { font: inherit; font-size: 1rem; padding: 0.45rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; }
 	.byhand { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 1rem; }
 	.byhand button, .imported button { font: inherit; font-size: 0.9rem; padding: 0.35rem 0.7rem; border: 1px solid #8a6d3b; border-radius: 6px; background: #fff; color: #6b4f1d; cursor: pointer; }
 	.byhand button.on { background: #8a6d3b; color: #fff; }
