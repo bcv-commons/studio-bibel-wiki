@@ -32,8 +32,9 @@ const PREFIX = {
 	'eBible.org': 'e',
 	'cdn.bibel.wiki/crosswire': 'c'
 };
-// the providers whose text the site reads (helloAO, and the CDN's own USJ); DBT needs a key
-const READABLE = new Set(['h', 'o', 'e', 'c']);
+// the providers whose text the site reads: helloAO, the CDN's own USJ, and DBT (through the site's
+// key proxy, netlify/functions/dbt.mjs)
+const READABLE = new Set(['h', 'o', 'e', 'c', 'd']);
 
 async function release() {
 	const pkg = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'));

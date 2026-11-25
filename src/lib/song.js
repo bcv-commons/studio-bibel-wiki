@@ -1,9 +1,9 @@
 // The song of a chapter: bible-song-builder's projection, with its inputs fetched just in time.
 // The release data (config, plans, alignment index) is served by this site under /data/; the
 // alignments come from the bcv-commons datasets on Hugging Face at the revisions the config pins.
-import { Config, chapterPlan, lexemeKeys, loadAlignment, loadBookText, prepareBook, projectChapter, spineChapters, verseMap } from 'bible-song-builder';
+import { Config, bookText, chapterPlan, lexemeKeys, loadAlignment, loadBookText, prepareBook, projectChapter, spineChapters, verseMap } from 'bible-song-builder';
 import { getJson } from './catalog.js';
-import { bookUsj } from './text.js';
+import { bookUsj, byChapter, chapterText } from './text.js';
 
 let configP = null;
 export const config = () => (configP ??= getJson('/data/config.json').then((b) => new Config(b)));
@@ -22,26 +22,36 @@ function files(cfg) {
 
 const books = new Map();
 
-/** The book-level work, once per edition and book: {ctx, vmap, chapters, planChapters, alignment} */
-export function prepare(edition, book, onStatus = () => {}) {
-	const key = `${edition.id}|${book.code}`;
-	if (!books.has(key)) books.set(key, load(edition, book, onStatus).catch((e) => { books.delete(key); throw e; }));
+/** The text and its alignment, ready for songs: {ctx, vmap, chapters, planChapters, alignment}.
+ *  Once per edition and book; for an edition read by chapter (DBT), once per chapter, since the
+ *  library builds a chapter's song from that chapter's text alone. */
+export function prepare(edition, book, chapter, onStatus = () => {}) {
+	const perChapter = byChapter(edition.route[book.testament]);
+	if (perChapter && !chapter) return Promise.resolve({ chapters: [] }); // read by chapter: nothing book-wide to load
+	const key = perChapter ? `${edition.id}|${book.code}|${chapter}` : `${edition.id}|${book.code}`;
+	if (!books.has(key)) books.set(key, load(edition, book, perChapter ? chapter : 0, onStatus).catch((e) => { books.delete(key); throw e; }));
 	return books.get(key);
 }
 
-async function load(edition, book, onStatus) {
+async function load(edition, book, chapter, onStatus) {
 	const cfg = await config();
 	const f = files(cfg);
-	onStatus(`Fetching ${edition.short} ${book.name} …`);
-	const usj = await bookUsj(edition, book, (d, n) => onStatus(`Fetching ${edition.short} ${book.name}: chapter ${d} of ${n}`));
 	const al0 = edition.alignment || {};
 	const ed = {
 		name: edition.short, iso: edition.iso, licence: edition.licence || edition.name,
 		compact_edition: al0.compact_edition || null, full_layer: al0.full_layer || null,
 		verse_map: al0.verse_map || '_versification_eng.json'
 	};
-	onStatus('Reading the text …');
-	const bt = await loadBookText(cfg, ed, book.code, usj);
+	let bt;
+	if (chapter) {
+		onStatus(`Fetching ${edition.short} ${book.name} ${chapter} …`);
+		bt = await bookText(ed, book.code, await chapterText(edition, book, chapter));
+	} else {
+		onStatus(`Fetching ${edition.short} ${book.name} …`);
+		const usj = await bookUsj(edition, book, (d, n) => onStatus(`Fetching ${edition.short} ${book.name}: chapter ${d} of ${n}`));
+		onStatus('Reading the text …');
+		bt = await loadBookText(cfg, ed, book.code, usj);
+	}
 	onStatus('Fetching the alignment and the song plan …');
 	const [al, bookPlan, vmap, lexemes] = await Promise.all([
 		loadAlignment(f, ed, book.code, bt.fileHash, bt.chapterFingerprints),
@@ -49,7 +59,8 @@ async function load(edition, book, onStatus) {
 		verseMap(f, ed),
 		lexemeKeys(f, book.code)]);
 	const ctx = prepareBook({ cfg, edition: ed, book: book.code, bt, al, bookPlan, vmap, lexemes });
-	const chapters = [...new Set([...bt.verses.keys()].map((k) => Math.floor(k / 1000)))].sort((a, b) => a - b);
+	const chapters = chapter && book.chapters ? Array.from({ length: book.chapters }, (_, i) => i + 1)
+		: [...new Set([...bt.verses.keys()].map((k) => Math.floor(k / 1000)))].sort((a, b) => a - b);
 	return { ctx, vmap, chapters, planChapters: new Set(bookPlan.chapters || []), alignment: { kind: al.kind, off: [...al.chaptersOff] } };
 }
 

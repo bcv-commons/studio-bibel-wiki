@@ -30,7 +30,7 @@
 		if (edId) q.set('ed', edId);
 		if (bookCode) q.set('book', bookCode);
 		if (chapter) q.set('ch', String(chapter));
-		goto(`?${q}`, { replaceState: true, keepFocus: true, noScroll: true });
+		goto(`?${q}`, { replace: true, reset: false });
 	}
 
 	async function run(label, fn) {
@@ -87,7 +87,7 @@
 		chapter = c;
 		remember();
 		const ed = edition, b = book;
-		const prep = await run('Preparing the book …', () => prepare(ed, b, (s) => (status = s)));
+		const prep = await run('Preparing the text …', () => prepare(ed, b, c, (s) => (status = s)));
 		if (!prep || edId !== ed.id || bookCode !== b.code) return;
 		chapters = prep.chapters;
 		alignment = prep.alignment;
@@ -104,7 +104,7 @@
 		await chooseBook(code);
 		if (!chapters.length && book) {
 			const ed = edition, b = book;
-			const prep = await run('Preparing the book …', () => prepare(ed, b, (s) => (status = s)));
+			const prep = await run('Preparing the book …', () => prepare(ed, b, 0, (s) => (status = s)));
 			if (prep && bookCode === b.code) chapters = prep.chapters;
 		}
 	}

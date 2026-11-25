@@ -1,6 +1,8 @@
 // The bibles catalog (bcv-commons/bibles, cdn.bibel.wiki), read in the browser just in time:
 // languages, a language's editions with their books and text route, and which of them have a
 // bcv-commons alignment (static/data/alignments/<iso>.json, made from the release by npm run data).
+import { byChapter } from './text.js';
+
 export const CDN = 'https://cdn.bibel.wiki/';
 
 const cache = new Map();
@@ -30,8 +32,9 @@ export async function languages() {
 	}).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** A text route the site reads: helloAO by chapter, or the CDN's own book USJ */
-export const readable = (r) => !!r && (r.route === 'helloao' || ((r.route === 'sofria' || r.route === 'usj') && !!r.path));
+/** A text route the site reads: helloAO by chapter, the CDN's own book USJ, or a DBT fileset
+ *  (Sofria or plain verses, by chapter through the site's key proxy) */
+export const readable = (r) => !!r && (r.route === 'helloao' || ((r.route === 'sofria' || r.route === 'usj') && !!r.path) || byChapter(r));
 
 /** The language's editions the site can read: [{id, short, iso, name, licence, dir, books, route,
  *  base, alignment}], aligned ones first. books: [{code, name, testament, chapters|null}] */
@@ -54,6 +57,7 @@ export async function editions(iso) {
 		} else {
 			// editions on the CDN (eBible, CrossWire) list their books in their _meta.json
 			const path = (route.ot || route.nt).path;
+			if (!path) continue; // a DBT edition that books.json does not list: its books are unknown
 			const meta = await orEmpty(getJson(`${base}${path}_meta.json`), null);
 			if (!meta) continue;
 			e = { n: meta.name, license: { licenseUrl: (meta.licenses || []).map((l) => l.type || l.url).filter(Boolean).join(', ') }, dir: meta.direction };
@@ -65,7 +69,7 @@ export async function editions(iso) {
 		if (!bookList.length) continue;
 		out.push({
 			id, short: id.slice(id.indexOf(':') + 1), iso, name: e.n || id,
-			licence: e.license?.licenseUrl || e.license?.type || '', dir: e.dir || 'ltr',
+			licence: e.license?.licenseUrl || e.license?.type || e.license?.mark || '', dir: e.dir || 'ltr',
 			books: bookList.sort((a, b) => ORDER.indexOf(a.code) - ORDER.indexOf(b.code)),
 			route, base, alignment: al
 		});
