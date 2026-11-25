@@ -7,18 +7,29 @@ export const CDN = 'https://cdn.bibel.wiki/';
 
 const cache = new Map();
 
-/** JSON of a URL, fetched once per page visit */
+/** JSON of a URL, fetched once per page visit. A failure is not kept, so trying again fetches again
+ *  (after a lost connection, say). */
 export function getJson(url) {
 	if (!cache.has(url)) {
 		cache.set(url, fetch(url).then((r) => {
 			if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
 			return r.json();
+		}).catch((e) => {
+			cache.delete(url);
+			throw e;
 		}));
 	}
 	return cache.get(url);
 }
 
-const orEmpty = (p, empty) => p.catch(() => empty);
+/** Whether an error is a failed connection (fetch's TypeError), not an answer from a server */
+export const offline = (e) => e instanceof TypeError || (typeof navigator !== 'undefined' && navigator.onLine === false);
+
+// a file the catalog does not have counts as empty; a lost connection is an error, not "nothing there"
+const orEmpty = (p, empty) => p.catch((e) => {
+	if (offline(e)) throw e;
+	return empty;
+});
 const langDir = (iso) => `${CDN}catalog/${iso[0]}/${iso}/`;
 
 /** [{iso, name, own}] of the languages with an aligned edition the site can read, by name */

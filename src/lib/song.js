@@ -7,7 +7,8 @@ import { bookUsj, byChapter, chapterText } from './text.js';
 import * as imported from './imported.js';
 
 let configP = null;
-export const config = () => (configP ??= getJson('/data/config.json').then((b) => new Config(b)));
+export const config = () => (configP ??= getJson('/data/config.json').then((b) => new Config(b))
+	.catch((e) => { configP = null; throw e; })); // not kept when it fails: trying again fetches again
 
 /** files for the library: a file of a pinned bcv-commons dataset, or null */
 function files(cfg) {

@@ -4,7 +4,7 @@
 	// built here in the browser, just in time. The choice is kept in the address (?lang=&ed=&book=&ch=).
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { editions as loadEditions, languages as loadLanguages } from '#lib/catalog.js';
+	import { editions as loadEditions, languages as loadLanguages, offline } from '#lib/catalog.js';
 	import { prepare, song } from '#lib/song.js';
 	import { edition as importedEdition, projects as loadProjects } from '#lib/imported.js';
 	import Copy from '#lib/Copy.svelte';
@@ -29,6 +29,7 @@
 	let result = $state(null);
 	let status = $state('');
 	let error = $state('');
+	let lost = $state(false); // the error is a lost connection: offer to try again
 
 	const edition = $derived(eds.find((e) => e.id === edId) || null);
 	const current = $derived(langs.find((l) => l.iso === iso) || null);
@@ -47,11 +48,15 @@
 
 	async function run(label, fn) {
 		error = '';
+		lost = false;
 		status = label;
 		try {
 			return await fn();
 		} catch (e) {
-			error = String(e?.message || e);
+			lost = offline(e);
+			error = lost
+				? 'The connection to the internet was lost, so the studio could not load what it needs. Check the connection, then try again.'
+				: String(e?.message || e);
 			return null;
 		} finally {
 			status = '';
@@ -145,15 +150,25 @@
 	const openPicker = (tab, e) => (bp = { tab, anchor: e.currentTarget.getBoundingClientRect() });
 	const at = $derived(chapters.indexOf(chapter));
 
-	onMount(async () => {
+	// the catalog's languages (once), then the choice in `want`: {imp, lang, ed, book, ch}
+	async function restore(want) {
+		if (!langs.length) {
+			const [list, own] = await Promise.all([run('Reading the catalog …', () => loadLanguages()), loadProjects()]);
+			imps = own;
+			if (!list) return;
+			langs = list;
+		}
+		if (want.imp && imps.some((p) => p.id === want.imp)) await chooseImport(want.imp, want);
+		else if (want.lang && langs.some((l) => l.iso === want.lang)) await chooseLanguage(want.lang, want);
+	}
+
+	onMount(() => {
 		const q = new URLSearchParams(location.search);
-		const [list, own] = await Promise.all([run('Reading the catalog …', () => loadLanguages()), loadProjects()]);
-		if (list) langs = list;
-		imps = own;
-		const want = { ed: q.get('ed'), book: q.get('book'), ch: Number(q.get('ch')) || 0 };
-		if (q.get('imp') && imps.some((p) => p.id === q.get('imp'))) await chooseImport(q.get('imp'), want);
-		else if (q.get('lang') && langs.some((l) => l.iso === q.get('lang'))) await chooseLanguage(q.get('lang'), want);
+		restore({ imp: q.get('imp'), lang: q.get('lang'), ed: q.get('ed'), book: q.get('book'), ch: Number(q.get('ch')) || 0 });
 	});
+
+	// after a lost connection: the same choice again, from the start
+	const tryAgain = () => restore({ imp, lang: iso, ed: edId, book: bookCode, ch: chapter });
 
 	const off = $derived(alignment && chapter && alignment.off.includes(chapter));
 </script>
@@ -236,7 +251,9 @@
 	{/if}
 
 	{#if status}<p class="status">{status}</p>{/if}
-	{#if error}<p class="error">{error}</p>{/if}
+	{#if error}
+		<p class="error">{error}{#if lost}&nbsp;<button class="again" onclick={tryAgain}>Try again</button>{/if}</p>
+	{/if}
 
 	{#if result && !status}
 		{#if !edition.alignment || alignment?.kind === 'none'}
@@ -300,6 +317,7 @@
 	.imported .small { font-size: 0.85rem; color: #555; }
 	.status { color: #555; }
 	.error { color: #a12; }
+	.again { font: inherit; font-size: 0.9rem; padding: 0.2rem 0.7rem; border: 1px solid #a12; border-radius: 6px; background: #fff; color: #a12; cursor: pointer; }
 	.note { background: #fff6e0; border: 1px solid #ecd9a6; border-radius: 6px; padding: 0.5rem 0.75rem; font-size: 0.9rem; }
 	.out { display: grid; gap: 1rem; }
 	article { background: #fff; border: 1px solid #e3e3df; border-radius: 8px; padding: 0.75rem 1rem; }
