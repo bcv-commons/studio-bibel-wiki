@@ -14,3 +14,4 @@ notes/
 .claude/
 .env
 .env.*
+import/mat/

@@ -6,9 +6,17 @@
 	import { goto } from '$app/navigation';
 	import { editions as loadEditions, languages as loadLanguages } from '#lib/catalog.js';
 	import { prepare, song } from '#lib/song.js';
+	import { edition as importedEdition, projects as loadProjects } from '#lib/imported.js';
 	import Copy from '#lib/Copy.svelte';
+	import LanguagePicker from '#lib/LanguagePicker.svelte';
+	import BookPicker from '#lib/BookPicker.svelte';
 
 	let langs = $state([]);
+	let imps = $state([]); // texts entered by hand (import/, local dev server only)
+	let imp = $state('');
+	let picking = $state(false); // the language dialog is open
+	let bp = $state(null); // the book/chapter panel: {tab, anchor}
+	let bookLoading = $state(false); // learning a book's chapters (CDN editions)
 	let iso = $state('');
 	let eds = $state([]);
 	let edId = $state('');
@@ -21,11 +29,13 @@
 	let error = $state('');
 
 	const edition = $derived(eds.find((e) => e.id === edId) || null);
+	const current = $derived(langs.find((l) => l.iso === iso) || null);
 	const book = $derived(edition?.books.find((b) => b.code === bookCode) || null);
 	const maxChars = 5000;
 
 	function remember() {
 		const q = new URLSearchParams();
+		if (imp) q.set('imp', imp);
 		if (iso) q.set('lang', iso);
 		if (edId) q.set('ed', edId);
 		if (bookCode) q.set('book', bookCode);
@@ -47,6 +57,7 @@
 	}
 
 	async function chooseLanguage(code, want = {}) {
+		imp = '';
 		iso = code;
 		eds = [];
 		edId = bookCode = '';
@@ -60,6 +71,24 @@
 		eds = list;
 		const ed = list.find((e) => e.id === want.ed) || (list.length === 1 ? list[0] : null);
 		if (ed) await chooseEdition(ed.id, want);
+	}
+
+	// a text entered by hand: shown as its own edition, instead of the catalog's
+	async function chooseImport(id, want = {}) {
+		imp = id;
+		iso = '';
+		eds = [];
+		edId = bookCode = '';
+		chapter = 0;
+		chapters = [];
+		result = null;
+		remember();
+		const p = imps.find((x) => x.id === id);
+		if (!p) return;
+		const ed = await run('Reading the text entered by hand …', () => importedEdition(p));
+		if (!ed || imp !== id) return;
+		eds = [ed];
+		await chooseEdition(ed.id, { ...want, book: want.book || (ed.books.length === 1 ? ed.books[0].code : null) });
 	}
 
 	async function chooseEdition(id, want = {}) {
@@ -78,7 +107,7 @@
 		chapter = 0;
 		result = null;
 		const b = book;
-		chapters = b?.chapters ? Array.from({ length: b.chapters }, (_, i) => i + 1) : [];
+		chapters = b?.chapterList ? [...b.chapterList] : b?.chapters ? Array.from({ length: b.chapters }, (_, i) => i + 1) : [];
 		remember();
 		if (want.ch) await chooseChapter(want.ch);
 	}
@@ -104,17 +133,24 @@
 		await chooseBook(code);
 		if (!chapters.length && book) {
 			const ed = edition, b = book;
+			bookLoading = true;
 			const prep = await run('Preparing the book …', () => prepare(ed, b, 0, (s) => (status = s)));
+			bookLoading = false;
 			if (prep && bookCode === b.code) chapters = prep.chapters;
 		}
 	}
 
+	const openPicker = (tab, e) => (bp = { tab, anchor: e.currentTarget.getBoundingClientRect() });
+	const at = $derived(chapters.indexOf(chapter));
+
 	onMount(async () => {
 		const q = new URLSearchParams(location.search);
-		const list = await run('Reading the catalog …', () => loadLanguages());
+		const [list, own] = await Promise.all([run('Reading the catalog …', () => loadLanguages()), loadProjects()]);
 		if (list) langs = list;
+		imps = own;
 		const want = { ed: q.get('ed'), book: q.get('book'), ch: Number(q.get('ch')) || 0 };
-		if (q.get('lang') && langs.some((l) => l.iso === q.get('lang'))) await chooseLanguage(q.get('lang'), want);
+		if (q.get('imp') && imps.some((p) => p.id === q.get('imp'))) await chooseImport(q.get('imp'), want);
+		else if (q.get('lang') && langs.some((l) => l.iso === q.get('lang'))) await chooseLanguage(q.get('lang'), want);
 	});
 
 	const aligned = (e) => (e.alignment ? '' : ' · no alignment');
@@ -133,15 +169,32 @@
 </header>
 
 <main>
+	{#if imps.length}
+		<nav class="byhand" aria-label="Texts entered by hand">
+			{#each imps as p (p.id)}
+				<button class:on={imp === p.id} onclick={() => chooseImport(p.id)}
+					title="A text entered by hand in import/{p.id}/, with its own alignment">✎ Entered by hand: {p.id}</button>
+			{/each}
+		</nav>
+	{/if}
+
+	{#if imp && edition}
+		<section class="imported">
+			<p><strong>{edition.name}</strong>{edition.meta?.Status ? ` · ${edition.meta.Status}` : ''}{edition.meta?.Date ? ` · ${edition.meta.Date}` : ''}</p>
+			{#if edition.meta?.Translation}<p class="small">{edition.meta.Translation}</p>{/if}
+			<p class="small">From <code>import/{imp}/</code> on this computer: only the local dev server shows it, the site does not.</p>
+			<button onclick={() => chooseLanguage('')}>Back to the catalog</button>
+		</section>
+	{/if}
+
 	<section class="pick">
-		<label>Language
-			<select value={iso} onchange={(e) => chooseLanguage(e.currentTarget.value)}>
-				<option value="">Choose a language …</option>
-				{#each langs as l (l.iso)}
-					<option value={l.iso}>{l.name}{l.own ? ` · ${l.own}` : ''}</option>
-				{/each}
-			</select>
-		</label>
+		{#if !imp}
+		<div class="field">
+			<span id="lang-label">Language</span>
+			<button class="lang" aria-labelledby="lang-label" aria-haspopup="dialog" disabled={!langs.length} onclick={() => (picking = true)}>
+				{#if current}{current.name}{#if current.own}<span class="own">&nbsp;· {current.own}</span>{/if}{:else}Choose a language …{/if}
+			</button>
+		</div>
 		<label>Bible
 			<select value={edId} disabled={!eds.length} onchange={(e) => chooseEdition(e.currentTarget.value)}>
 				<option value="">{iso && !eds.length && !status ? 'No edition the studio can read yet' : 'Choose a Bible …'}</option>
@@ -150,22 +203,31 @@
 				{/each}
 			</select>
 		</label>
-		<label>Book
-			<select value={bookCode} disabled={!edition} onchange={(e) => openBook(e.currentTarget.value)}>
-				<option value="">Choose a book …</option>
-				{#each edition?.books || [] as b (b.code)}
-					<option value={b.code}>{b.name}</option>
-				{/each}
-			</select>
-		</label>
+		{/if}
+		<div class="field">
+			<span id="book-label">Book</span>
+			<button class="lang" aria-labelledby="book-label" aria-haspopup="dialog" disabled={!edition} onclick={(e) => openPicker('book', e)}>
+				{book ? book.name : 'Choose a book …'}
+			</button>
+		</div>
+		<div class="field">
+			<span id="chapter-label">Chapter</span>
+			<div class="chapter">
+				<button class="step" aria-label="Previous chapter" disabled={at <= 0} onclick={() => chooseChapter(chapters[at - 1])}>‹</button>
+				<button class="lang" aria-labelledby="chapter-label" aria-haspopup="dialog" disabled={!book || (!chapters.length && !bookLoading)}
+					onclick={(e) => openPicker('chapter', e)}>{chapter || (bookLoading ? 'Loading …' : 'Choose …')}</button>
+				<button class="step" aria-label="Next chapter" disabled={at < 0 || at >= chapters.length - 1} onclick={() => chooseChapter(chapters[at + 1])}>›</button>
+			</div>
+		</div>
 	</section>
 
-	{#if chapters.length}
-		<nav class="chapters" aria-label="Chapters">
-			{#each chapters as c (c)}
-				<button class:on={c === chapter} onclick={() => chooseChapter(c)}>{c}</button>
-			{/each}
-		</nav>
+	{#if picking}
+		<LanguagePicker {langs} current={iso} onPick={(code) => chooseLanguage(code)} onClose={() => (picking = false)} />
+	{/if}
+
+	{#if bp}
+		<BookPicker books={edition?.books || []} book={bookCode} {chapter} {chapters} loading={bookLoading} tab={bp.tab} anchor={bp.anchor}
+			onBook={(code) => openBook(code)} onChapter={(c) => chooseChapter(c)} onClose={() => (bp = null)} />
 	{/if}
 
 	{#if status}<p class="status">{status}</p>{/if}
@@ -217,11 +279,21 @@
 	h1 span { color: #8a6d3b; font-weight: 500; }
 	a { color: #6b4f1d; }
 	.pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.75rem; margin: 1.25rem 0; }
-	label { display: flex; flex-direction: column; font-size: 0.85rem; color: #555; gap: 0.25rem; }
+	label, .field { display: flex; flex-direction: column; font-size: 0.85rem; color: #555; gap: 0.25rem; }
+	button.lang { font: inherit; font-size: 1rem; text-align: left; padding: 0.45rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; color: #1d1d1f; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	button.lang:hover:not(:disabled) { border-color: #8a6d3b; }
+	button.lang .own { color: #777; }
+	.chapter { display: flex; gap: 0.3rem; }
+	.chapter button.lang { flex: 1; text-align: center; }
+	.step { font: inherit; font-size: 1.1rem; width: 2.2rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; color: #6b4f1d; cursor: pointer; }
+	.step:disabled { color: #ccc; cursor: default; }
 	select { font: inherit; font-size: 1rem; padding: 0.45rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; }
-	.chapters { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 1rem; }
-	.chapters button { min-width: 2.4rem; padding: 0.3rem; font: inherit; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; }
-	.chapters button.on { background: #8a6d3b; border-color: #8a6d3b; color: #fff; }
+	.byhand { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 1rem; }
+	.byhand button, .imported button { font: inherit; font-size: 0.9rem; padding: 0.35rem 0.7rem; border: 1px solid #8a6d3b; border-radius: 6px; background: #fff; color: #6b4f1d; cursor: pointer; }
+	.byhand button.on { background: #8a6d3b; color: #fff; }
+	.imported { background: #fff; border: 1px solid #e3e3df; border-radius: 8px; padding: 0.6rem 1rem; margin-top: 0.75rem; }
+	.imported p { margin: 0.2rem 0; }
+	.imported .small { font-size: 0.85rem; color: #555; }
 	.status { color: #555; }
 	.error { color: #a12; }
 	.note { background: #fff6e0; border: 1px solid #ecd9a6; border-radius: 6px; padding: 0.5rem 0.75rem; font-size: 0.9rem; }

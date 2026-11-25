@@ -5,8 +5,9 @@ import { extractSofria } from './vendor/verse_text/extract_sofria.js';
 import { extractPlain } from './vendor/verse_text/extract_plain.js';
 import { firstNumber } from './vendor/verse_text/rule.js';
 
-/** The routes read a chapter at a time, through the site's DBT key proxy (netlify/functions/dbt.mjs) */
-export const byChapter = (r) => !!r && !r.path && !!r.id && (r.route === 'sofria' || r.route === 'plain');
+/** The routes read a chapter at a time: DBT, through the site's key proxy (netlify/functions/dbt.mjs),
+ *  and texts entered by hand (imported.js) */
+export const byChapter = (r) => !!r && (r.route === 'import' || (!r.path && !!r.id && (r.route === 'sofria' || r.route === 'plain')));
 
 /** The book's USJ. helloAO: every chapter, merged (bible.helloao.org/api/<id>/<BOOK>/<n>.json);
  *  the CDN's own editions: <base><path><BOOK>.usj.json. onProgress(done, total) for helloAO. */
