@@ -65,7 +65,7 @@ async function load(edition, book, read, onStatus) {
 	let bt;
 	if (read.length) {
 		onStatus(`Fetching ${edition.short} ${book.name} ${read.join(', ')} …`);
-		bt = await bookText(ed, book.code, merge(await Promise.all(read.map((c) => textOf(edition, book, c)))));
+		bt = await bookText(ed, book.code, { ...merge(await Promise.all(read.map((c) => textOf(edition, book, c)))), partial: true });
 	} else {
 		onStatus(`Fetching ${edition.short} ${book.name} …`);
 		const usj = await bookUsj(edition, book, (d, n) => onStatus(`Fetching ${edition.short} ${book.name}: chapter ${d} of ${n}`));
@@ -74,7 +74,7 @@ async function load(edition, book, read, onStatus) {
 	}
 	onStatus('Fetching the alignment and the song plan …');
 	const [al, bookPlan, vmap, lexemes] = await Promise.all([
-		loadAlignment(f, ed, book.code, bt.fileHash, bt.chapterFingerprints),
+		loadAlignment(f, ed, book.code, bt.fileHash, bt.chapterFingerprints, { partial: bt.partial }),
 		getJson(`/data/plan/${book.code}/${book.code}.json`),
 		verseMap(f, ed),
 		lexemeKeys(f, book.code)]);
