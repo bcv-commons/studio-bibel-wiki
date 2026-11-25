@@ -95,7 +95,7 @@
 			error = `${b.name} has no chapter ${c} in this edition.`;
 			return;
 		}
-		const res = await run('Writing the song …', () => song(prep, b, c));
+		const res = await run('Writing the song …', () => song(prep, b, c, (s) => (status = s)));
 		if (res && chapter === c && bookCode === b.code) result = res;
 	}
 
