@@ -1,7 +1,7 @@
 // The song of a chapter: bible-song-builder's projection, with its inputs fetched just in time.
 // The release data (config, plans, alignment index) is served by this site under /data/; the
 // alignments come from the bcv-commons datasets on Hugging Face at the revisions the config pins.
-import { Config, chapterPlan, lexemeKeys, loadAlignment, loadBookText, prepareBook, projectChapter, verseMap } from 'bible-song-builder';
+import { Config, chapterPlan, lexemeKeys, loadAlignment, loadBookText, prepareBook, projectChapter, spineChapters, verseMap } from 'bible-song-builder';
 import { getJson } from './catalog.js';
 import { bookUsj } from './text.js';
 
@@ -22,7 +22,7 @@ function files(cfg) {
 
 const books = new Map();
 
-/** The book-level work, once per edition and book: {ctx, chapters} */
+/** The book-level work, once per edition and book: {ctx, vmap, chapters, planChapters, alignment} */
 export function prepare(edition, book, onStatus = () => {}) {
 	const key = `${edition.id}|${book.code}`;
 	if (!books.has(key)) books.set(key, load(edition, book, onStatus).catch((e) => { books.delete(key); throw e; }));
@@ -50,15 +50,16 @@ async function load(edition, book, onStatus) {
 		lexemeKeys(f, book.code)]);
 	const ctx = prepareBook({ cfg, edition: ed, book: book.code, bt, al, bookPlan, vmap, lexemes });
 	const chapters = [...new Set([...bt.verses.keys()].map((k) => Math.floor(k / 1000)))].sort((a, b) => a - b);
-	return { ctx, chapters, planChapters: new Set(bookPlan.chapters || []), alignment: { kind: al.kind, off: [...al.chaptersOff] } };
+	return { ctx, vmap, chapters, planChapters: new Set(bookPlan.chapters || []), alignment: { kind: al.kind, off: [...al.chaptersOff] } };
 }
 
 const pad = (n) => String(n).padStart(3, '0');
 
 /** {lyrics, style, notes, chars} of one edition chapter */
-export async function song({ ctx, planChapters }, book, chapter) {
-	// only the spine chapters the book plan lists, so chapter 1 and the last ask for no missing file
-	const near = [chapter - 1, chapter, chapter + 1].filter((c) => !planChapters.size || planChapters.has(c));
+export async function song({ ctx, vmap, planChapters }, book, chapter) {
+	// the spine chapters edition chapter c draws on (c-1, c, c+1 and any the verse map moves a verse
+	// from), only those the book plan lists, so chapter 1 and the last ask for no missing file
+	const near = spineChapters(vmap, book.code, chapter).filter((c) => !planChapters.size || planChapters.has(c));
 	const docs = (await Promise.all(near.map((c) =>
 		getJson(`/data/plan/${book.code}/${book.code}_${pad(c)}.json`).catch(() => null)))).filter(Boolean);
 	return projectChapter(ctx, chapter, chapterPlan(docs));
