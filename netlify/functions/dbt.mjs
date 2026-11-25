@@ -4,6 +4,7 @@
 // text_plain filesets answer with the verses; text_json (Sofria) and text_usx with a signed link
 // (data[0].path) that the browser fetches itself (DBT's CloudFront allows any origin).
 // The key is DBT_API_KEY in the site's Netlify environment (locally: .env, read by netlify dev).
+// It answers only requests from the site's own pages (ownPage); the site's one server function.
 
 const API = 'https://4.dbt.io/api';
 // (netlify dev, unlike Netlify itself, retries a 404 answer as <path>.html and .htm, so locally
@@ -14,8 +15,25 @@ const json = (status, body, cache = 'no-store') => new Response(JSON.stringify(b
 	status, headers: { 'Content-Type': 'application/json', 'Cache-Control': cache }
 });
 
+/** Whether the request comes from this site's own pages. A same-origin GET carries no Origin header,
+ *  so the test is Sec-Fetch-Site, which the browser sets and a page cannot; a browser without it is
+ *  judged by Origin or Referer. Anything outside a browser can fake these: the check stops other
+ *  sites' pages and casual reuse of the key, not a determined script. */
+function ownPage(req) {
+	const site = req.headers.get('sec-fetch-site');
+	if (site) return site === 'same-origin';
+	const host = new URL(req.url).host;
+	const from = req.headers.get('origin') || req.headers.get('referer');
+	try {
+		return !!from && new URL(from).host === host;
+	} catch {
+		return false;
+	}
+}
+
 export default async (req) => {
 	if (req.method !== 'GET') return json(405, { error: 'GET only' });
+	if (!ownPage(req)) return json(403, { error: "only for studio.bibel.wiki's own pages" });
 	const m = ROUTE.exec(new URL(req.url).pathname);
 	if (!m) return json(400, { error: 'expected /api/dbt/<fileset>/<BOOK>/<chapter>' });
 	const key = process.env.DBT_API_KEY;
